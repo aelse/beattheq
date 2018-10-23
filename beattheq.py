@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
 # If you want to use this, set BTQ_USER and BTQ_PASS to your BeatTheQ account creds.
@@ -39,7 +39,7 @@ order_items = {
 
 
 def valid_response_or_raise(r):
-    print r.text
+    print(r.text)
     response = r.json()
     if not r.ok:
         raise Exception('Uh-oh. Bad http status: {}'.format(r.status_code))
@@ -55,7 +55,7 @@ def parse_args():
     p.add_argument('--note', help='A note to the barista', default=None)
     args = p.parse_args()
     if args.coffee_type not in order_items:
-        print 'Choose from coffee types:', coffee_types
+        print('Choose from coffee types:', coffee_types)
         sys.exit(1)
     return args
 
@@ -80,7 +80,7 @@ data = {
 r = s.post(api_base + '/auth', data=json.dumps(data))
 response = valid_response_or_raise(r)
 token = response['access_token']
-print token
+print(token)
 raise Exception("asdasd")
 s.headers['Authorization'] = 'Bearer {}'.format(token)
 
@@ -106,8 +106,8 @@ r = s.post(api_base + '/orders/checkout', data=json.dumps(order))
 try:
     response = valid_response_or_raise(r)
 except Exception as e:
-    print 'Error in checkout API'
-    print r.json()
+    print('Error in checkout API')
+    print(r.json())
     sys.exit()
 
 # Submit order - note: nonce does not change when the app does this!
@@ -115,18 +115,18 @@ except Exception as e:
 if args.note:
     order['orderNote'] = args.note
 
-print 'Submitting order...'
+print('Submitting order...')
 r = s.post(api_base + '/orders/submit', data=json.dumps(order))
 try:
     response = valid_response_or_raise(r)
 except Exception as e:
-    print 'Error in submit API'
-    print r.json()
+    print('Error in submit API')
+    print(r.json())
     sys.exit()
 
 # print response
 order_id = response['orderId']
-print 'Submitted order, id: {}'.format(response['orderId'])
+print('Submitted order, id: {}'.format(response['orderId']))
 
 time.sleep(2)  # Avoid race between order submission and order status
 
@@ -136,14 +136,14 @@ while True:
     try:
         response = valid_response_or_raise(r)
     except Exception as e:
-        print 'Error in status API'
-        print r.json()
+        print('Error in status API')
+        print(r.json())
         time.sleep(2)
         continue
     new_status = response['status']['flags'][0]
     if new_status != status:
         # print response
-        print 'Order status now {}'.format(new_status)
+        print('Order status now {}'.format(new_status))
         status = new_status
     if status == 'ACCEPTED' or status.startswith('REJECTED'):
         sys.exit()
