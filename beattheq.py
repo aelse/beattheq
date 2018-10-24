@@ -42,6 +42,9 @@ def parse_args():
     if args.order and args.search:
         print('Choose either --search or --order')
         sys.exit(1)
+    if args.coffee is None:
+        print('Must specify coffee')
+        sys.exit(1)
     if args.venue not in venues:
         v = ', '.join(venues.keys())
         print('Choose from venues: {}'.format(v))
@@ -145,22 +148,17 @@ if __name__ == '__main__':
         sys.exit(1)
     coffee = coffees[0]
 
-    print(coffee)
-    raise Exception("asdasd")
-
     token = get_auth_token(s, creds)
     s.headers['Authorization'] = 'Bearer {}'.format(token)
-    print(token)
-
     nonce = get_nonce(s)
 
     order = {
         "items": [{
             "time": int(time.time()),
-            "id": chosen_coffee['id'],
-            "options": chosen_coffee['options'],
+            "id": coffee['id'],
+            "options": option_ids(default_item_options(coffee)),
         }],
-        "venueId": venue_id,  # Double Barrel
+        "venueId": venue_id,
         "serviceType": "takeaway",
         "nonce": nonce,
     }
@@ -180,7 +178,7 @@ if __name__ == '__main__':
         order['orderNote'] = args.note
 
     print('Submitting order...')
-    r = s.post(api_base + '/orders/submit', data=json.dumps(order))
+    r = s.post(api_base + '/orders/submit', json=order)
     try:
         r.raise_for_status()
         response = r.json()
@@ -206,11 +204,11 @@ if __name__ == '__main__':
             print(r.json())
             time.sleep(2)
             continue
-        new_status = response['status']['flags'][0]
+        new_status = response['status']['flags'][0].lower()
         if new_status != status:
             # print response
-            print('Order status now {}'.format(new_status))
+            print('Order status now "{}"'.format(new_status))
             status = new_status
-        if status == 'ACCEPTED' or status.startswith('REJECTED'):
+        if status == 'accepted' or status.startswith('rejected'):
             sys.exit()
         time.sleep(1)
