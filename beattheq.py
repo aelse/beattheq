@@ -34,14 +34,12 @@ def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument('venue', help='Venue name')
     p.add_argument('--coffee', help='Type of coffee (eg. espresso, cap)')
+    p.add_argument('--double', default=False, action='store_true', help='Double shot (Extra Strength option)')
     p.add_argument('--note', help='A note to the barista', default=None)
     p.add_argument('--order', default=False, action='store_true', help='Place an order')
     p.add_argument('--search', default=False, action='store_true', help='Search the menu, do not order')
     args = p.parse_args()
 
-    if args.order and args.search:
-        print('Choose either --search or --order')
-        sys.exit(1)
     if args.coffee is None:
         print('Must specify coffee')
         sys.exit(1)
@@ -110,16 +108,38 @@ def filter_coffee(coffee):
     return f
 
 
-def default_item_options(coffee):
+def get_item_options(coffee, overrides=None):
+    if overrides is None:
+        overrides = {}
     opts = {}
     og = coffee['optionGroups']
     for g in og.values():
         for option in g:
-            if option['type'].lower() == 'radio':
-                for o in option['options']:
-                    if o['isDefault']:
-                        opts[option['name']] = ItemOption(id=o['id'], name=o['name'], isDefault=o['isDefault'])
+            option_name = option['name'].lower()
+            search = None
+            if option_name in overrides:
+                search = overrides[option_name]
+            o = get_option(option, search)
+            if o is not None:
+                opts[option['name']] = o
     return opts
+
+
+def get_option(option, search=None):
+    default = None
+    match = None
+    if option['type'].lower() == 'radio':
+        for o in option['options']:
+            if o['isDefault']:
+                default = o
+            if search is not None and search.lower() in o['name'].lower():
+                match = o
+        if match is not None:
+            return ItemOption(id=match['id'], name=match['name'], isDefault=match['isDefault'])
+        if default is not None:
+            return ItemOption(id=default['id'], name=default['name'], isDefault=default['isDefault'])
+        raise BTQException('No item match')
+    return None
 
 
 def option_ids(options):
@@ -152,11 +172,15 @@ if __name__ == '__main__':
     s.headers['Authorization'] = 'Bearer {}'.format(token)
     nonce = get_nonce(s)
 
+    order_overrides = {}
+    if args.double:
+        order_overrides['strength'] = 'extra shot'
+
     order = {
         "items": [{
             "time": int(time.time()),
             "id": coffee['id'],
-            "options": option_ids(default_item_options(coffee)),
+            "options": option_ids(get_item_options(coffee, overrides=order_overrides)),
         }],
         "venueId": venue_id,
         "serviceType": "takeaway",
@@ -176,6 +200,11 @@ if __name__ == '__main__':
     # The order fields are the same, but we can also include a note
     if args.note:
         order['orderNote'] = args.note
+
+    if not args.order:
+        print('Skipping order submission (use --order flag to submit). Order would be:')
+        print(json.dumps(order, indent=2))
+        sys.exit(0)
 
     print('Submitting order...')
     r = s.post(api_base + '/orders/submit', json=order)
