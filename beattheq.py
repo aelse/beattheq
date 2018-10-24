@@ -18,9 +18,14 @@ class BTQException(Exception):
     pass
 
 
+Creds = namedtuple('Creds', ['id', 'secret'])
+
+ItemOption = namedtuple('ItemOption', ['id', 'name', 'isDefault'])
+
 api_base = 'https://api-ms.beattheq.com/v2.0'
 
 venues = {
+    'regiment': 4114,
     't60': 1602,
 }
 
@@ -30,16 +35,18 @@ def parse_args():
     p.add_argument('venue', help='Venue name')
     p.add_argument('--coffee', help='Type of coffee (eg. espresso, cap)')
     p.add_argument('--note', help='A note to the barista', default=None)
+    p.add_argument('--order', default=False, action='store_true', help='Place an order')
     p.add_argument('--search', default=False, action='store_true', help='Search the menu, do not order')
     args = p.parse_args()
+
+    if args.order and args.search:
+        print('Choose either --search or --order')
+        sys.exit(1)
     if args.venue not in venues:
         v = ', '.join(venues.keys())
         print('Choose from venues: {}'.format(v))
         sys.exit(1)
     return args
-
-
-Creds = namedtuple('Creds', ['id', 'secret'])
 
 
 # There's a client id and secret embedded in the btq javascript that must
@@ -67,6 +74,16 @@ def get_auth_token(s, creds):
     return token
 
 
+def get_nonce(s):
+    # Each order includes a nonce, as a string of 40 hex digits.
+    # We could probably make one up but the app requests one from the API.
+    r = s.get(api_base + '/nonce')
+    r.raise_for_status()
+    response = r.json()
+    nonce = response['nonces'][0]
+    return nonce
+
+
 def build_session(creds):
     s = requests.Session()
     s.headers['Content-Type'] = 'application/json'
@@ -84,39 +101,58 @@ def get_coffee_menu(s, venue):
     raise BTQException('No coffee menu')
 
 
+def filter_coffee(coffee):
+    def f(item):
+        return coffee.lower() in item['name'].lower()
+    return f
+
+
+def default_item_options(coffee):
+    opts = {}
+    og = coffee['optionGroups']
+    for g in og.values():
+        for option in g:
+            if option['type'].lower() == 'radio':
+                for o in option['options']:
+                    if o['isDefault']:
+                        opts[option['name']] = ItemOption(id=o['id'], name=o['name'], isDefault=o['isDefault'])
+    return opts
+
+
+def option_ids(options):
+    return [o.id for o in options.values()]
+
+
 if __name__ == '__main__':
     args = parse_args()
     creds = get_client_creds()
     s = build_session(creds)
 
-    menu = get_coffee_menu(s, venues[args.venue])
+    venue_id = venues[args.venue]
+    menu = get_coffee_menu(s, venue_id)
     if args.search:
         items = ', '.join([m['name'] for m in menu])
         print('Available menu items: {}'.format(items))
         sys.exit(1)
 
-    coffee = None
-    for item in menu:
-        if args.coffee.lower() in item['name'].lower():
-            coffee = item
-    if coffee is None:
+    coffees = list(filter(filter_coffee(args.coffee), menu))
+    if len(coffees) == 0:
         print('Unknown coffee: {}'.format(args.coffee))
         sys.exit(1)
+    if len(coffees) > 1:
+        matches = ', '.join([m['name'] for m in coffees])
+        print('Multiple coffees match "{}": {}'.format(args.coffee, matches))
+        sys.exit(1)
+    coffee = coffees[0]
 
-    # token = get_auth_token(s, creds)
-    # s.headers['Authorization'] = 'Bearer {}'.format(token)
-    # print(token)
-
-    print(item)
+    print(coffee)
     raise Exception("asdasd")
 
+    token = get_auth_token(s, creds)
+    s.headers['Authorization'] = 'Bearer {}'.format(token)
+    print(token)
 
-    # Each order includes a nonce, as a string of 40 hex digits.
-    # We could probably make one up but the app requests one from the API.
-    r = s.get(api_base + '/nonce')
-    r.raise_for_status()
-    response = r.json()
-    nonce = response['nonces'][0]
+    nonce = get_nonce(s)
 
     order = {
         "items": [{
@@ -124,8 +160,7 @@ if __name__ == '__main__':
             "id": chosen_coffee['id'],
             "options": chosen_coffee['options'],
         }],
-        # "deviceId": str(uuid.uuid4()),  # I actually use the real uuid the app uses
-        "venueId": "208",  # Double Barrel
+        "venueId": venue_id,  # Double Barrel
         "serviceType": "takeaway",
         "nonce": nonce,
     }
