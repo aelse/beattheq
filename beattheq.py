@@ -34,7 +34,9 @@ def parse_args():
     p.add_argument('venue', help='Venue name')
     p.add_argument('--coffee', help='Type of coffee (eg. espresso, cap)')
     p.add_argument('--double', default=False, action='store_true', help='Double shot (Extra Strength option)')
-    p.add_argument('--note', help='A note to the barista', default=None)
+    p.add_argument('--sugar', default=None, help='Number of sugars (e.g. 1/2, 1, 2, 3)')
+    p.add_argument('--milk', default=None, help='Type of milk (eg skim, soy). Defaults to Full Cream')
+    p.add_argument('--note', default=None, help='A note to the barista')
     p.add_argument('--order', default=False, action='store_true', help='Place an order')
     p.add_argument('--search', default=False, action='store_true', help='Search the menu, do not order')
     args = p.parse_args()
@@ -174,6 +176,12 @@ if __name__ == '__main__':
     order_overrides = {}
     if args.double:
         order_overrides['strength'] = 'extra shot'
+
+    if args.sugar:
+        order_overrides['sugar'] = str(args.sugar)
+
+    if args.milk:
+        order_overrides['milk'] = args.milk
 
     order = {
         "items": [{
