@@ -11,7 +11,6 @@ import re
 import requests
 import sys
 import time
-import uuid
 
 
 class BTQException(Exception):
